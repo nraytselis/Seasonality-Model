@@ -10,7 +10,7 @@ library(deSolve)
 Pond_ODE =function(t, y, parameters) {
   
   with(as.list(parameters),{
-    N=y[1]; J=y[2]; A=y[3]; Es = y[4:(4+latent_stages - 1)]; I = y[4+latent_stages]; Preds = y[5]; L3F = y[6]
+    N=y[1]; J=y[2]; A=y[3]; Es = y[4:(4+latent_stages - 1)]; I = y[4+latent_stages]; Preds = y[5+latent_stages]; L3F = y[6+latent_stages]
     VOL = 1
     
     Pred_A = f*Preds/(1 + f*h*(A + f_J*h_J*J + f_N*h_N*N)/VOL  + i_P*max(Preds-1, 0)/VOL)
@@ -40,9 +40,9 @@ Pond_ODE =function(t, y, parameters) {
     
     dIdt = as.numeric(latent_progression[latent_stages]) - d_A_c*I - Pred_A*I
     
-    dPredsdt = Pred_N*N + Pred_J*J + Pred_A*A + Pred_A*I - d_F*Preds #NEED TO add exposed classes, right now throwing error 
+    dPredsdt = Pred_N*N + Pred_J*J + Pred_A*A - lambdaF*Preds*I*L3F - d_F*Preds   #NEED TO add exposed classes, right now throwing error 
     
-    dL3Fdt = Pred_A*I - d_W*L3F - d_F*L3F
+    dL3Fdt <- lambdaF*Preds*I*L3F - d_W*L3F - d_F*L3F 
     
     result = c(dNdt,dJdt,dAdt, dEsdt, dIdt,dPredsdt, dL3Fdt)
     
@@ -56,19 +56,20 @@ parameters = as.list(signif(ReboundParams$samples[which.max(ReboundParams$log.p)
 parameters["latent_stages"] = 60
 parameters["latent_rate"] = 4.3
 parameters["lambda"] = 1.3
-parameters["comp_M"] = 0.001
+parameters["lambdaF"] = 2
+parameters["comp_M"] = 0.01
 parameters["comp_b"] = 0
 parameters["comp_d"] = 0
 parameters["can"] = 0
-parameters["f"] = 0.004
+parameters["f"] = 0.04
 parameters["f_N"] = 4.704984e-02
 parameters["f_J"] = 3.471900e-02
-parameters["h"] = 0.003
+parameters["h"] = 0.03
 parameters["h_N"] = 4.675860e-01
 parameters["h_J"] = 3.951459e-01
 parameters["i_P"] = 1.911824e-01
-parameters["d_W"] = 0.001
-parameters["d_F"] = 0.0001
+parameters["d_W"] = 0.1
+parameters["d_F"] = 0.1
 
 parameters = unlist(parameters)
 
@@ -77,7 +78,7 @@ Exposed_values = rep(0, times=parameters["latent_stages"])
 names(Exposed_values) = Exposed_names
 Exposed_values
 
-Initial_conditions = c(N = 7500, J = 6000, A = 700, Exposed_values, I = 0, L3F = 0, Preds = 1)/15
+Initial_conditions = c(N = 7500, J = 6000, A = 700, Exposed_values, I = 0, Preds = 150,L3F = 0)/15
 timespan = 365
 
 #fish added during rainy season
@@ -85,17 +86,22 @@ introduction_times_fish = numeric()
 introduction_times_fish = c(1:180, 270:365) 
 event_data_fish = data.frame(var = "Preds", time = introduction_times_fish, value = 10, method = "add")
 
-#fishing during dry season
+#fishing during dry season (fish and L3Fs)
 introduction_times_fishing = numeric()
 introduction_times_fishing = c(181:269)
-event_data_fishing = data.frame(var = "Preds", time = introduction_times_fishing, value = -10, method = "add")
+n <- length(introduction_times_fishing)
+var_choices <- sample(c("Preds", "L3F"), size = n, replace = TRUE, prob = c(0.8, 0.2)) 
+event_data_fishing = data.frame(var = var_choices, time = introduction_times_fishing, value = -20, method = "add")
 
 #combined list of events
 all_events = rbind(event_data_fish, event_data_fishing)
 
+
 #run simulation
 PondSim = data.frame(ode(y = Initial_conditions, times=1:timespan, parms=parameters, hmax=1,
                             method="lsoda", func=Pond_ODE, events = list(data = all_events))) 
+
+
 
 #reformat sim data frame
 PondSim[,"Es"] = rowSums(PondSim) - PondSim[,"N"] - PondSim[,"J"]- PondSim[,"A"] - PondSim[,"I"] - PondSim[,"time"]
@@ -114,7 +120,7 @@ PondSim = PondSim %>% pivot_longer(cols = c(N,J,A,Exposed,I,Preds, L3F))
 
 #plot sim 
 p1 = ggplot(PondSim, aes(x=time, y = value + 0.01 , group = name, color = name)) + 
-  geom_line() + ylab("density per L") + theme_minimal() 
+  geom_line() + ylab("density per L") + theme_minimal() + scale_y_log10()
 p1
 
 #need to make sure L3Fs cannot go negative, as they currently can
