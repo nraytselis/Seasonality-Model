@@ -40,11 +40,12 @@ Pond_ODE =function(t, y, parameters) {
     
     dIdt = as.numeric(latent_progression[latent_stages]) - d_A_c*I - Pred_A*I
     
-    dPredsdt = Pred_N*N + Pred_J*J + Pred_A*A - lambdaF*Preds*I*L3F - d_F*Preds   #NEED TO add exposed classes, right now throwing error 
+    dPredsdt = Pred_N*N + Pred_J*J + Pred_A*A + Pred_A*sum(Es) - d_F*Preds   
     
-    dL3Fdt <- lambdaF*Preds*I*L3F - d_W*L3F - d_F*L3F 
+    dL3Fdt <- Pred_A*I - d_W*L3F - d_F*L3F 
     
     result = c(dNdt,dJdt,dAdt, dEsdt, dIdt,dPredsdt, dL3Fdt)
+    
     
     return(list(result))
   }
@@ -56,19 +57,18 @@ parameters = as.list(signif(ReboundParams$samples[which.max(ReboundParams$log.p)
 parameters["latent_stages"] = 60
 parameters["latent_rate"] = 4.3
 parameters["lambda"] = 1.3
-parameters["lambdaF"] = 2
 parameters["comp_M"] = 0.01
-parameters["comp_b"] = 0
-parameters["comp_d"] = 0
+parameters["comp_b"] = 0.001
+parameters["comp_d"] = 0.001
 parameters["can"] = 0
-parameters["f"] = 0.04
+parameters["f"] = 0.4
 parameters["f_N"] = 4.704984e-02
 parameters["f_J"] = 3.471900e-02
-parameters["h"] = 0.03
+parameters["h"] = 0.3
 parameters["h_N"] = 4.675860e-01
 parameters["h_J"] = 3.951459e-01
 parameters["i_P"] = 1.911824e-01
-parameters["d_W"] = 0.1
+parameters["d_W"] = 0.05
 parameters["d_F"] = 0.1
 
 parameters = unlist(parameters)
@@ -78,20 +78,21 @@ Exposed_values = rep(0, times=parameters["latent_stages"])
 names(Exposed_values) = Exposed_names
 Exposed_values
 
-Initial_conditions = c(N = 7500, J = 6000, A = 700, Exposed_values, I = 0, Preds = 150,L3F = 0)/15
-timespan = 365
+Initial_conditions = c(N = 7500, J = 6000, A = 700, Exposed_values, I = 0, Preds = 15,L3F = 0)/15
+timespan = 365*5
 
 #fish added during rainy season
-introduction_times_fish = numeric()
-introduction_times_fish = c(1:180, 270:365) 
-event_data_fish = data.frame(var = "Preds", time = introduction_times_fish, value = 10, method = "add")
+intro_fish = expand.grid(day = c(1:180, 270:365), year = 1:5) 
+intro_fish$time <- intro_fish$day + 365 * intro_fish$year
+n <- nrow(intro_fish)
+event_data_fish = data.frame(var = "Preds", time = intro_fish$time, value = 5, method = "add")
 
 #fishing during dry season (fish and L3Fs)
-introduction_times_fishing = numeric()
-introduction_times_fishing = c(181:269)
-n <- length(introduction_times_fishing)
-var_choices <- sample(c("Preds", "L3F"), size = n, replace = TRUE, prob = c(0.8, 0.2)) 
-event_data_fishing = data.frame(var = var_choices, time = introduction_times_fishing, value = -20, method = "add")
+remove_fishing <- expand.grid(day = 181:269, year = 1:5)
+remove_fishing$time <- remove_fishing$day + 365 * remove_fishing$year
+nfishing <- nrow(remove_fishing)
+var_choices <- sample(c("Preds", "L3F"), size = nfishing, replace = TRUE, prob = c(0.8, 0.2)) 
+event_data_fishing = data.frame(var = var_choices, time = remove_fishing$time, value = -10, method = "add")
 
 #combined list of events
 all_events = rbind(event_data_fish, event_data_fishing)
