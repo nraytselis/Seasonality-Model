@@ -13,6 +13,9 @@ Pond_ODE =function(t, y, parameters) {
     N=y[1]; J=y[2]; A=y[3]; Es = y[4:(4+latent_stages - 1)]; I = y[4+latent_stages]; Preds = y[5+latent_stages]; L3F = y[6+latent_stages]
     VOL = 1
     
+    immigration = ifelse(t %% 365 > 100 & t %% 365 < 150,ImmigrationRate,0) 
+    fishing = ifelse(t %% 365 <= 100 | t %% 365 >= 150, FishingRate, 0)
+    
     Pred_A = f*Preds/(1 + f*h*(A + f_J*h_J*J + f_N*h_N*N)/VOL  + i_P*max(Preds-1, 0)/VOL)
     Pred_J = f*f_J*Preds/(1 + f*h*(A + f_J*h_J*J + f_N*h_N*N)/VOL  + i_P*max(Preds-1, 0)/VOL)
     Pred_N = f*f_N*Preds/(1 + f*h*(A + f_J*h_J*J + f_N*h_N*N)/VOL  + i_P*max(Preds-1, 0)/VOL)
@@ -40,7 +43,7 @@ Pond_ODE =function(t, y, parameters) {
     
     dIdt = as.numeric(latent_progression[latent_stages]) - d_A_c*I - Pred_A*I
     
-    dPredsdt = Pred_N*N + Pred_J*J + Pred_A*A + Pred_A*sum(Es) - d_F*Preds   
+    dPredsdt = convEff*(Pred_N*N + Pred_J*J + Pred_A*A + Pred_A*sum(Es)) - d_F*Preds + immigration - FishingRate*Preds   #conv eff should be based on size class
     
     dL3Fdt <- Pred_A*I - d_W*L3F - d_F*L3F 
     
@@ -69,8 +72,11 @@ parameters["h_N"] = 4.675860e-01
 parameters["h_J"] = 3.951459e-01
 parameters["i_P"] = 1.911824e-01
 parameters["d_W"] = 0.05
-parameters["d_F"] = 0.1
-
+parameters["d_F"] = 0.05
+parameters["convEff"] = 0.001 #how many fish can you build by eating one adult, temper for nauplii and juveniles (mass of n/mass over a)
+parameters["ImmigrationRate"] = 0.1 #fish per liter per day 
+parameters["FishingRate"] = 0.01 #fish fished per liter per day (fishing effort)
+  
 parameters = unlist(parameters)
 
 Exposed_names = paste0("E", 1:parameters["latent_stages"])
@@ -81,26 +87,28 @@ Exposed_values
 Initial_conditions = c(N = 7500, J = 6000, A = 700, Exposed_values, I = 0, Preds = 15,L3F = 0)/15
 timespan = 365*5
 
-#fish added during rainy season
-intro_fish = expand.grid(day = c(1:180, 270:365), year = 1:5) 
-intro_fish$time <- intro_fish$day + 365 * intro_fish$year
-n <- nrow(intro_fish)
-event_data_fish = data.frame(var = "Preds", time = intro_fish$time, value = 5, method = "add")
+#flip fishing and flooding!
 
-#fishing during dry season (fish and L3Fs)
-remove_fishing <- expand.grid(day = 181:269, year = 1:5)
-remove_fishing$time <- remove_fishing$day + 365 * remove_fishing$year
-nfishing <- nrow(remove_fishing)
-var_choices <- sample(c("Preds", "L3F"), size = nfishing, replace = TRUE, prob = c(0.8, 0.2)) 
-event_data_fishing = data.frame(var = var_choices, time = remove_fishing$time, value = -10, method = "add")
-
-#combined list of events
-all_events = rbind(event_data_fish, event_data_fishing)
-
+# #fish added during rainy season
+# intro_fish = expand.grid(day = c(1:180, 270:365), year = 1:5) 
+# intro_fish$time <- intro_fish$day + 365 * intro_fish$year
+# n <- nrow(intro_fish)
+# event_data_fish = data.frame(var = "Preds", time = intro_fish$time, value = 5, method = "add")
+# 
+# #fishing during dry season (fish and L3Fs)
+# remove_fishing <- expand.grid(day = 181:269, year = 1:5)
+# remove_fishing$time <- remove_fishing$day + 365 * remove_fishing$year
+# nfishing <- nrow(remove_fishing)
+# var_choices <- sample(c("Preds", "L3F"), size = nfishing, replace = TRUE, prob = c(0.8, 0.2)) 
+# event_data_fishing = data.frame(var = var_choices, time = remove_fishing$time, value = -10, method = "add")
+# 
+# #combined list of events
+# all_events = rbind(event_data_fish, event_data_fishing)
+# 
 
 #run simulation
 PondSim = data.frame(ode(y = Initial_conditions, times=1:timespan, parms=parameters, hmax=1,
-                            method="lsoda", func=Pond_ODE, events = list(data = all_events))) 
+                            method="lsoda", func=Pond_ODE)) 
 
 
 
