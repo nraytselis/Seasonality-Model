@@ -26,11 +26,11 @@ Pond_ODE =function(t, y, parameters) {
     
     d_N_c = d_N*exp(comp_d / VOL * (c_N * N + c_J * J + A + sum(Es))) #density dependence in deaths
     
-    m_N_c = m_N*exp(-comp_M/VOL*(c_N*N + c_J*J + A + sum(Es))) #density dependence in maturation
+    m_N_c = m_N*exp(-comp_m/VOL*(c_N*N + c_J*J + A + sum(Es))) #density dependence in maturation
     
-    m_J_c = m_J*exp(-comp_M/VOL*(c_N*N + c_J*J + A + sum(Es))) #density dependence in maturation
+    m_J_c = m_J*exp(-comp_m/VOL*(c_N*N + c_J*J + A + sum(Es))) #density dependence in maturation
     
-    dNdt = b_M*(A + sum(Es))/2*exp(-comp_b/VOL*(c_N*N + c_J*J + A + sum(Es))) - (m_N_c+d_N_c)*N - can*(A + I + sum(Es))*N - Pred_N*N
+    dNdt = b_M*(A + sum(Es))/2*exp(-comp_b/VOL*(c_N*N + c_J*J + A + sum(Es))) - (m_N_c+d_N_c)*N - cann*(A + I + sum(Es))*N - Pred_N*N
     
     dJdt = m_N_c*N - (m_J_c+d_J_c)*J -Pred_J*J
     
@@ -55,28 +55,37 @@ Pond_ODE =function(t, y, parameters) {
   )
 }
 
-ReboundParams <- readRDS(file = "Rebound_parameters3.RDA") #bring in best parameters
-parameters = as.list(signif(ReboundParams$samples[which.max(ReboundParams$log.p),], 3))
+
+#bring in mcmc chains
+setwd("~/Desktop/Rscripts/Data")
+joint_fit <- readRDS(file = "Joint_GW_50000p.RDA")
+
+#get best fit
+get_best_fit = function(chain.list){
+  L = length(chain.list)
+  chain.scores = numeric()
+  for(i in 1:L){
+    chain.scores[i] = max(chain.list[[i]]$log.p)
+  }
+  list(chain.list[[which.max(chain.scores)]]$samples[which.max(chain.list[[which.max(chain.scores)]]$log.p),],
+       chain.list[[which.max(chain.scores)]]$cov.jump,
+       max(chain.list[[which.max(chain.scores)]]$log.p))
+  
+}
+
+joint_fit = get_best_fit(joint_fit)
+
+parameters = joint_fit[[1]]
+
 parameters["latent_stages"] = 60
 parameters["latent_rate"] = 4.3
 parameters["lambda"] = 1.3
-parameters["comp_M"] = 0.01
-parameters["comp_b"] = 0.001
-parameters["comp_d"] = 0.001
-parameters["can"] = 0
-parameters["f"] = 0.4
-parameters["f_N"] = 4.704984e-02
-parameters["f_J"] = 3.471900e-02
-parameters["h"] = 0.3
-parameters["h_N"] = 4.675860e-01
-parameters["h_J"] = 3.951459e-01
-parameters["i_P"] = 1.911824e-01
 parameters["d_W"] = 0.05
 parameters["d_F"] = 0.05
 parameters["convEff"] = 0.001 #how many fish can you build by eating one adult, temper for nauplii and juveniles (mass of n/mass over a)
 parameters["ImmigrationRate"] = 0.1 #fish per liter per day 
 parameters["FishingRate"] = 0.01 #fish fished per liter per day (fishing effort)
-  
+
 parameters = unlist(parameters)
 
 Exposed_names = paste0("E", 1:parameters["latent_stages"])
